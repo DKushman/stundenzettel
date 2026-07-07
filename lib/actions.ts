@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "crypto";
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { eintragSchema, type EintragInput } from "./validations";
-import { getSchicht, eintraege as vorhandene, type Eintrag } from "./data";
+import { appendEintragToSheets, getSchicht, eintraege as vorhandene, type Eintrag } from "./data";
 import { arbeitsMinuten } from "./time";
 
 /* ────────────────────────────────────────────────────────────────────
@@ -134,8 +134,13 @@ export async function submitStundenzettel(input: EintragInput) {
   });
 
   revalidatePath("/");
+  revalidatePath("/admin");
+  revalidatePath(`/q`);
   revalidatePath(`/schicht/${data.schichtId}`);
   revalidatePath(`/stundenzettel/${data.schichtId}`);
+
+  vorhandene.push(eintrag);
+  appendEintragToSheets(eintrag);
 
   return { ok: true as const, eintrag, gearbeiteteMin };
 }

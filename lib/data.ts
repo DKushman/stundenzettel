@@ -208,6 +208,24 @@ export function sheetMinuten(sheet: TimesheetSheet) {
   return sheet.rows.reduce((sum, row) => sum + arbeitsMinuten(row.checkIn, row.checkOut, row.pauseMin), 0);
 }
 
+export function appendEintragToSheets(eintrag: Eintrag) {
+  const sheet = sheets.find((s) => s.id === eintrag.schichtId);
+  const schicht = getSchicht(eintrag.schichtId);
+  if (!sheet || !schicht) return;
+  const m = getMitarbeiter(eintrag.mitarbeiterId);
+  sheet.rows.push({
+    id: eintrag.id,
+    vorname: m.vorname,
+    nachname: m.nachname,
+    datum: schicht.datum,
+    checkIn: eintrag.checkIn,
+    checkOut: eintrag.checkOut,
+    pauseMin: eintrag.pauseMin,
+    signatur: eintrag.signatur,
+  });
+  if (sheet.status === "offen") sheet.status = "eingereicht";
+}
+
 export const statusLabelSheet: Record<SheetStatus, string> = {
   offen: "Offen",
   eingereicht: "Eingereicht",
