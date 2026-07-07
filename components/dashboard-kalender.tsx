@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StatusLegende } from "@/components/status-legende";
 import { statusAkzent, statusLabel, type SchichtView } from "@/lib/data";
 import { formatDatumKurz, isoHeute } from "@/lib/time";
 
@@ -39,7 +40,7 @@ export function DashboardKalender({ schichten }: { schichten: SchichtView[] }) {
   const zellen = useMemo(() => {
     const { year, month } = cursor;
     const erster = new Date(year, month, 1);
-    const startOffset = (erster.getDay() + 6) % 7; // Montag = 0
+    const startOffset = (erster.getDay() + 6) % 7;
     const tageImMonat = new Date(year, month + 1, 0).getDate();
     const result: { tag: number | null; iso: string | null }[] = [];
 
@@ -54,8 +55,8 @@ export function DashboardKalender({ schichten }: { schichten: SchichtView[] }) {
   const tagesSchichten = ausgewaehlt ? (nachDatum.get(ausgewaehlt) ?? []) : [];
 
   return (
-    <div className="rounded-2xl border border-line bg-card p-4 shadow-card sm:p-5">
-      <div className="flex items-center justify-between gap-3">
+    <div className="rounded-2xl border border-line bg-card p-3 shadow-card sm:p-5">
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() =>
@@ -64,12 +65,14 @@ export function DashboardKalender({ schichten }: { schichten: SchichtView[] }) {
               return { year: d.getFullYear(), month: d.getMonth() };
             })
           }
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-ink-soft transition-colors hover:bg-surface hover:text-ink"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-ink-soft transition-colors hover:bg-surface hover:text-ink"
           aria-label="Vorheriger Monat"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <p className="text-sm font-semibold capitalize">{monatsLabel(cursor.year, cursor.month)}</p>
+        <p className="text-[clamp(0.8rem,2.8vw,0.95rem)] font-semibold capitalize">
+          {monatsLabel(cursor.year, cursor.month)}
+        </p>
         <button
           type="button"
           onClick={() =>
@@ -78,27 +81,33 @@ export function DashboardKalender({ schichten }: { schichten: SchichtView[] }) {
               return { year: d.getFullYear(), month: d.getMonth() };
             })
           }
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-ink-soft transition-colors hover:bg-surface hover:text-ink"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-ink-soft transition-colors hover:bg-surface hover:text-ink"
           aria-label="Nächster Monat"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-ink-faint">
+      <div className="mt-3">
+        <StatusLegende kompakt />
+      </div>
+
+      <div className="mt-3 grid grid-cols-7 gap-0.5 text-center text-[clamp(0.6rem,2vw,0.7rem)] font-medium text-ink-faint sm:gap-1">
         {WOCHENTAGE.map((w) => (
           <span key={w}>{w}</span>
         ))}
       </div>
 
-      <div className="mt-1 grid grid-cols-7 gap-1">
+      <div className="mt-0.5 grid grid-cols-7 gap-0.5 sm:gap-1">
         {zellen.map((z, i) => {
           if (!z.tag || !z.iso) {
-            return <span key={i} className="aspect-square" />;
+            return <span key={i} className="min-h-[4.25rem] sm:min-h-[5.5rem]" />;
           }
           const eintraege = nachDatum.get(z.iso) ?? [];
           const istHeute = z.iso === heute;
           const aktiv = z.iso === ausgewaehlt;
+          const sichtbar = eintraege.slice(0, 3);
+          const rest = eintraege.length - sichtbar.length;
 
           return (
             <button
@@ -106,56 +115,92 @@ export function DashboardKalender({ schichten }: { schichten: SchichtView[] }) {
               type="button"
               onClick={() => setAusgewaehlt(z.iso)}
               className={cn(
-                "relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm transition-colors",
-                aktiv ? "bg-ink text-white" : "hover:bg-surface",
-                istHeute && !aktiv && "ring-1 ring-ink/20"
+                "flex min-h-[4.25rem] flex-col rounded-lg border p-0.5 text-left transition-colors sm:min-h-[5.5rem] sm:p-1",
+                aktiv
+                  ? "border-ink bg-ink text-white"
+                  : "border-transparent hover:border-line hover:bg-surface",
+                istHeute && !aktiv && "ring-1 ring-ink/25"
               )}
             >
-              <span className="tabular-nums">{z.tag}</span>
-              {eintraege.length > 0 && (
-                <span className="mt-0.5 flex max-w-full flex-wrap justify-center gap-0.5 px-0.5">
-                  {eintraege.slice(0, 3).map((s) => (
+              <span
+                className={cn(
+                  "px-0.5 text-[clamp(0.65rem,2.2vw,0.8rem)] font-medium tabular-nums",
+                  aktiv ? "text-white" : "text-ink"
+                )}
+              >
+                {z.tag}
+              </span>
+
+              <div className="mt-0.5 flex flex-1 flex-col gap-0.5 overflow-hidden">
+                {sichtbar.map((s) => (
+                  <span
+                    key={s.id}
+                    className={cn(
+                      "flex min-h-[1.1rem] items-center gap-0.5 rounded px-0.5 sm:min-h-[1.25rem]",
+                      aktiv ? "bg-white/15" : "bg-surface/80"
+                    )}
+                    title={`${s.auftrag.titel} · ${statusLabel[s.status]}`}
+                  >
                     <span
-                      key={s.id}
-                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      className="h-full w-0.5 shrink-0 rounded-full sm:w-1"
                       style={{ backgroundColor: aktiv ? "#fff" : statusAkzent[s.status] }}
                     />
-                  ))}
-                  {eintraege.length > 3 && (
-                    <span className={cn("text-[9px] leading-none", aktiv ? "text-white/80" : "text-ink-faint")}>
-                      +{eintraege.length - 3}
+                    <span
+                      className={cn(
+                        "truncate text-[clamp(0.5rem,1.8vw,0.65rem)] leading-tight",
+                        aktiv ? "text-white" : "text-ink-soft"
+                      )}
+                    >
+                      {s.auftrag.titel}
                     </span>
-                  )}
-                </span>
-              )}
+                  </span>
+                ))}
+                {rest > 0 && (
+                  <span
+                    className={cn(
+                      "px-0.5 text-[clamp(0.5rem,1.6vw,0.6rem)] leading-none",
+                      aktiv ? "text-white/75" : "text-ink-faint"
+                    )}
+                  >
+                    +{rest}
+                  </span>
+                )}
+              </div>
             </button>
           );
         })}
       </div>
 
       {ausgewaehlt && (
-        <div className="mt-5 border-t border-line pt-4">
-          <p className="text-xs font-medium text-ink-soft">
+        <div className="mt-4 border-t border-line pt-4 sm:mt-5">
+          <p className="text-[clamp(0.7rem,2.2vw,0.8rem)] font-medium text-ink-soft">
             {formatDatumKurz(ausgewaehlt)}
-            {tagesSchichten.length > 0 && ` · ${tagesSchichten.length} ${tagesSchichten.length === 1 ? "Eintrag" : "Einträge"}`}
+            {tagesSchichten.length > 0 &&
+              ` · ${tagesSchichten.length} ${tagesSchichten.length === 1 ? "Eintrag" : "Einträge"}`}
           </p>
           {tagesSchichten.length === 0 ? (
-            <p className="mt-2 text-sm text-ink-faint">Keine Stundenzettel an diesem Tag.</p>
+            <p className="mt-2 text-[clamp(0.8rem,2.5vw,0.875rem)] text-ink-faint">
+              Keine Stundenzettel an diesem Tag.
+            </p>
           ) : (
             <ul className="mt-2 space-y-2">
               {tagesSchichten.map((s) => (
                 <li key={s.id}>
                   <Link
                     href={`/stundenzettel/${s.id}`}
-                    className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 transition-colors hover:bg-surface"
+                    className="flex flex-col gap-2 rounded-xl border border-line px-3 py-2.5 transition-colors hover:bg-surface sm:flex-row sm:items-center sm:gap-3"
                   >
                     <span
-                      className="h-8 w-1 shrink-0 rounded-full"
+                      className="h-1 w-full shrink-0 rounded-full sm:h-8 sm:w-1"
                       style={{ backgroundColor: statusAkzent[s.status] }}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{s.auftrag.titel}</p>
-                      <p className="truncate text-xs text-ink-soft">{statusLabel[s.status]}</p>
+                      <p className="truncate text-[clamp(0.8rem,2.6vw,0.9rem)] font-medium">
+                        {s.auftrag.titel}
+                      </p>
+                      <p className="truncate text-[clamp(0.7rem,2.2vw,0.75rem)] text-ink-soft">
+                        {statusLabel[s.status]} · {s.beginnGeplant}–{s.endeGeplant}
+                      </p>
                     </div>
                   </Link>
                 </li>
