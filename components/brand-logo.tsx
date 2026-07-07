@@ -9,10 +9,10 @@ export function BrandLogo({ className }: { className?: string }) {
       <Image
         src={LOGO}
         alt="StaffConnect"
-        width={168}
-        height={48}
+        width={240}
+        height={72}
         priority
-        className="h-[clamp(2rem,6vw,2.5rem)] w-auto max-w-[min(100%,10.5rem)] object-contain object-left"
+        className="h-[clamp(2.75rem,9vw,3.75rem)] w-auto max-w-[min(100%,15rem)] object-contain object-left"
       />
     </Link>
   );

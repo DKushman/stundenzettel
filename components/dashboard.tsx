@@ -6,30 +6,30 @@ import { motion } from "framer-motion";
 import { BellRing, CalendarDays, ChevronRight, Clock, LayoutList, MapPin, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/status-badge";
-import { StatusLegende } from "@/components/status-legende";
 import { CopyButton } from "@/components/copy-button";
 import { AvatarStack } from "@/components/avatar";
 import { AbgabeProgress } from "@/components/abgabe-progress";
 import { DashboardKalender } from "@/components/dashboard-kalender";
-import { abgabe, statusAkzent, type SchichtView } from "@/lib/data";
+import { abgabe, statusAkzent, type SchichtStatus, type SchichtView } from "@/lib/data";
 import { formatDatumKurz, isoHeute } from "@/lib/time";
 
 /* ── Dashboard: Stundenzettel-Liste oder Kalender-Überblick ─────── */
 
-type Filter = "alle" | "offen" | "erfasst" | "unterschrieben" | "geplant";
+type Filter = "alle" | SchichtStatus;
 type Ansicht = "liste" | "kalender";
 
-const filterTabs: { key: Filter; label: string }[] = [
+const filterTabs: { key: Filter; label: string; farbe?: string }[] = [
   { key: "alle", label: "Alle" },
-  { key: "offen", label: "Offen" },
-  { key: "erfasst", label: "Erfasst" },
-  { key: "unterschrieben", label: "Unterschrieben" },
-  { key: "geplant", label: "Geplant" },
+  { key: "geplant", label: "Geplant", farbe: statusAkzent.geplant },
+  { key: "offen", label: "Offen", farbe: statusAkzent.offen },
+  { key: "teilweise", label: "Teilweise", farbe: statusAkzent.teilweise },
+  { key: "ueberfaellig", label: "Überfällig", farbe: statusAkzent.ueberfaellig },
+  { key: "erfasst", label: "Erfasst", farbe: statusAkzent.erfasst },
+  { key: "unterschrieben", label: "Unterschrieben", farbe: statusAkzent.unterschrieben },
 ];
 
 function passtFilter(s: SchichtView, filter: Filter) {
   if (filter === "alle") return true;
-  if (filter === "offen") return s.status === "offen" || s.status === "teilweise" || s.status === "ueberfaellig";
   return s.status === filter;
 }
 
@@ -48,7 +48,9 @@ export function Dashboard({ schichten }: { schichten: SchichtView[] }) {
   const [suche, setSuche] = useState("");
   const [ansicht, setAnsicht] = useState<Ansicht>("liste");
 
-  const offene = schichten.filter((s) => passtFilter(s, "offen")).length;
+  const offene = schichten.filter(
+    (s) => s.status === "offen" || s.status === "teilweise" || s.status === "ueberfaellig"
+  ).length;
   const erinnerungen = schichten.flatMap((s) =>
     s.faelligeErinnerungen.map((f) => ({ schicht: s, ...f }))
   );
@@ -144,29 +146,37 @@ export function Dashboard({ schichten }: { schichten: SchichtView[] }) {
       )}
 
       <div className="mt-6 flex flex-col gap-3 sm:mt-8">
-        <div className="flex w-full max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-line/50 p-1">
-          {filterTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={cn(
-                "relative whitespace-nowrap rounded-xl px-3 py-2 text-[clamp(0.8rem,2.5vw,0.95rem)] font-medium transition-colors sm:px-4",
-                filter === tab.key ? "text-ink" : "text-ink-soft hover:text-ink"
-              )}
-            >
-              {filter === tab.key && (
-                <motion.span
-                  layoutId="filter-pill"
-                  className="absolute inset-0 rounded-xl bg-card shadow-card"
-                  transition={{ type: "spring", bounce: 0.15, duration: 0.4 }}
-                />
-              )}
-              <span className="relative">{tab.label}</span>
-            </button>
-          ))}
+        <div className="w-fit max-w-full overflow-x-auto rounded-2xl bg-line/50 p-1">
+          <div className="flex w-fit items-center gap-1">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setFilter(tab.key)}
+                className={cn(
+                  "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-[clamp(0.75rem,2.3vw,0.875rem)] font-medium transition-colors sm:px-3.5",
+                  filter === tab.key ? "text-ink" : "text-ink-soft hover:text-ink"
+                )}
+              >
+                {filter === tab.key && (
+                  <motion.span
+                    layoutId="filter-pill"
+                    className="absolute inset-0 rounded-xl bg-card shadow-card"
+                    transition={{ type: "spring", bounce: 0.15, duration: 0.4 }}
+                  />
+                )}
+                {tab.farbe ? (
+                  <span
+                    className="relative h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: tab.farbe }}
+                  />
+                ) : (
+                  <span className="relative h-2 w-2 shrink-0 rounded-full bg-ink-faint" />
+                )}
+                <span className="relative">{tab.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-
-        <StatusLegende />
 
         <div className="relative w-full">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint sm:left-4 sm:h-[18px] sm:w-[18px]" />
