@@ -81,6 +81,16 @@ export type SchichtView = {
   faelligeErinnerungen: FaelligeErinnerung[];
 };
 
+/** Unternehmen / Auftraggeber für die Sidebar-Navigation. */
+export type UnternehmenView = {
+  id: string;
+  auftraggeber: string;
+  titel: string;
+  ort: string;
+  farbe: string;
+  anzahlSchichten: number;
+};
+
 export const statusLabel: Record<SchichtStatus, string> = {
   geplant: "Geplant",
   offen: "Heute offen",

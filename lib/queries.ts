@@ -10,6 +10,7 @@ import {
   type KundeView,
   type Mitarbeiter,
   type SchichtView,
+  type UnternehmenView,
   type ZuweisungView,
 } from "./data";
 
@@ -167,6 +168,33 @@ export async function getSchichtViews(): Promise<SchichtView[]> {
 export async function getSchichtViewById(id: string): Promise<SchichtView | null> {
   const alle = await getSchichtViews();
   return alle.find((s) => s.id === id) ?? null;
+}
+
+/** Alle Auftraggeber / Unternehmen für die Sidebar. */
+export async function getUnternehmen(): Promise<UnternehmenView[]> {
+  const rows = await query<{
+    id: string;
+    auftraggeber: string;
+    titel: string;
+    ort: string;
+    farbe: string;
+    anzahl_schichten: number;
+  }>(
+    `SELECT a.id, a.auftraggeber, a.titel, a.ort, a.farbe,
+            COUNT(s.id)::int AS anzahl_schichten
+     FROM auftraege a
+     LEFT JOIN schichten s ON s.auftrag_id = a.id
+     GROUP BY a.id, a.auftraggeber, a.titel, a.ort, a.farbe
+     ORDER BY a.auftraggeber ASC, a.titel ASC`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    auftraggeber: r.auftraggeber,
+    titel: r.titel,
+    ort: r.ort,
+    farbe: r.farbe,
+    anzahlSchichten: Number(r.anzahl_schichten),
+  }));
 }
 
 export async function getAuditFuerSchicht(schichtId: string): Promise<AuditView[]> {

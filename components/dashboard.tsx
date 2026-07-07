@@ -43,7 +43,13 @@ function datumImEintrag(datum: string) {
   return relativ ? `${relativ} · ${kurz}` : kurz;
 }
 
-export function Dashboard({ schichten }: { schichten: SchichtView[] }) {
+export function Dashboard({
+  schichten,
+  auftragFilter,
+}: {
+  schichten: SchichtView[];
+  auftragFilter?: string;
+}) {
   const [filter, setFilter] = useState<Filter>("alle");
   const [suche, setSuche] = useState("");
   const [ansicht, setAnsicht] = useState<Ansicht>("liste");
@@ -59,6 +65,7 @@ export function Dashboard({ schichten }: { schichten: SchichtView[] }) {
     const q = suche.trim().toLowerCase();
     return schichten
       .filter((s) => {
+        if (auftragFilter && s.auftrag.id !== auftragFilter) return false;
         const namen = s.zuweisungen
           .map((z) => `${z.mitarbeiter.vorname} ${z.mitarbeiter.nachname}`)
           .join(" ");
@@ -66,7 +73,7 @@ export function Dashboard({ schichten }: { schichten: SchichtView[] }) {
         return passtFilter(s, filter) && (!q || text.toLowerCase().includes(q));
       })
       .sort((a, b) => b.datum.localeCompare(a.datum) || a.beginnGeplant.localeCompare(b.beginnGeplant));
-  }, [schichten, filter, suche]);
+  }, [schichten, filter, suche, auftragFilter]);
 
   return (
     <div className="mx-auto w-full max-w-6xl">

@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Link2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
+import { SidebarHinweis, SidebarNav } from "@/components/sidebar-nav";
+import type { UnternehmenView } from "@/lib/data";
 
 /**
  * AppShell: Sidebar + Header für die Disposition.
@@ -12,7 +12,13 @@ import { BrandLogo } from "@/components/brand-logo";
  * Chrome komplett ausgeblendet — Mitarbeiter und Kunden sehen nur den
  * Inhalt ihres Links.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  unternehmen,
+}: {
+  children: React.ReactNode;
+  unternehmen: UnternehmenView[];
+}) {
   const pathname = usePathname();
   const oeffentlich =
     pathname.startsWith("/erfassen") ||
@@ -28,33 +34,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[minmax(0,17rem)_1fr]">
-      {/* ── Sidebar (Desktop) ─────────────────────────────────────── */}
-      <aside className="hidden border-r border-line bg-card px-4 py-6 print:hidden lg:flex lg:flex-col xl:px-5">
-        <BrandLogo />
+    <div className="min-h-dvh lg:grid lg:grid-cols-[minmax(0,18.5rem)_1fr]">
+      {/* ── Sidebar: sticky, volle Höhe, Notiz immer unten sichtbar ─ */}
+      <aside className="sticky top-0 hidden h-dvh flex-col border-r border-line bg-card px-4 py-6 print:hidden lg:flex xl:px-5">
+        <div className="shrink-0">
+          <BrandLogo />
+        </div>
 
-        <nav className="mt-8 flex flex-1 flex-col gap-0.5 text-[clamp(0.85rem,2.2vw,0.95rem)]">
-          <Link
-            href="/"
-            className={cn(
-              "flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors",
-              pathname === "/"
-                ? "bg-surface font-medium"
-                : "text-ink-soft hover:bg-surface hover:text-ink"
-            )}
-          >
-            <LayoutGrid className="h-[18px] w-[18px]" /> Dashboard
-          </Link>
-        </nav>
+        <div className="mt-8 flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Suspense fallback={<div className="h-10 animate-pulse rounded-xl bg-surface" />}>
+            <SidebarNav unternehmen={unternehmen} />
+          </Suspense>
+        </div>
 
-        <div className="rounded-2xl bg-surface p-4 text-[clamp(0.8rem,2.2vw,0.875rem)] text-ink-soft">
-          <p className="flex items-center gap-2 font-medium text-ink">
-            <Link2 className="h-4 w-4" /> So funktioniert’s
-          </p>
-          <p className="mt-1.5">
-            Links für Mitarbeiter und Kunden kopierst du direkt auf dem A4-Blatt — pro Person über das
-            Namens-Dropdown, für den Kunden über „Kunden-Link kopieren“.
-          </p>
+        <div className="mt-4 shrink-0 pt-2">
+          <SidebarHinweis />
         </div>
       </aside>
 
