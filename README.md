@@ -1,62 +1,77 @@
-# Zeiterfassung — Mobile Stundenzettel-App mit A4-Blatt
+# Zeiterfassung — Stundenzettel für Personalvermittlung
 
-Next.js (App Router) · TypeScript · Tailwind CSS · Framer Motion · react-hook-form + zod · react-signature-canvas.
+Next.js (App Router) · TypeScript · Tailwind · Postgres (Neon/Vercel) · PWA.
 
-Kernidee: Der Stundenzettel ist ein **festes A4-Blatt** (210 × 297 mm) mit immer gleicher Struktur. Die App setzt nur die Werte aus der Datenbank ein — pro Zeile: **Vorname · Nachname · Check-in · Check-out · Pause · Gearbeitete Zeit (berechnet) · Unterschrift**.
+Der Stundenzettel ist ein festes A4-Blatt pro Schicht. Die eingeteilten
+Mitarbeiter stehen immer schon mit Namen in der Tabelle — erfasst werden nur
+Zeiten und Unterschriften.
 
-## Schnellstart
+## Funktionen
+
+- **Dashboard nach Datum**: Alle Stundenzettel chronologisch gruppiert, mit Status
+  (Geplant / Offen / Teilweise / Überfällig / Erfasst / Unterschrieben) und Abgabe-Fortschritt.
+- **Interaktives A4-Blatt**: Alle Felder anklickbar (Inline-Bearbeitung durch die
+  Disposition). Namens-Dropdown pro Zeile zeigt die eingeteilten Personen — daneben
+  „Kopieren“ für den persönlichen Questionnaire-Link genau dieser Schicht.
+- **Mitarbeiter-Questionnaire** (`/erfassen/<token>`): mobiler 4-Schritte-Wizard ohne
+  Login, große Touch-Ziele, numerische Tastatur, digitale Unterschrift.
+- **Kunden-Unterschrift** (`/unterschrift/<token>`): Der Auftraggeber sieht das A4-Blatt
+  und zeichnet digital gegen. Link über „Kunden-Link kopieren“ auf dem Blatt.
+- **Revisionssicherheit**: Audit-Log für jede Änderung (wer, wann, was, alt → neu, IP,
+  Gerät) + SHA-256-Prüf-Hash, der Unterschriften kryptografisch an die Felder bindet.
+  Änderungshistorie unter jedem A4-Blatt einsehbar.
+- **Automatische Erinnerungen**: Stündlicher Vercel-Cron (`/api/cron/erinnerungen`)
+  findet Abgaben, die 24 h nach Schichtende fehlen. Fällige Erinnerungen erscheinen
+  oben im Dashboard mit Kopier-Link; E-Mail-Versand (z. B. Resend) ist in der
+  Cron-Route vorbereitet.
+- **PWA + Offline**: Installierbar (manifest + Service Worker). Abgaben ohne Empfang
+  landen in einer IndexedDB-Queue und werden automatisch nachgereicht.
+
+## Schnellstart (lokal, ohne Setup)
 
 ```bash
 npm install
 npm run dev        # http://localhost:3000
 ```
 
-Deployment: Repo zu GitHub pushen → auf vercel.com importieren → fertig.
+Ohne `DATABASE_URL` läuft automatisch **PGlite** — ein eingebettetes Postgres, das
+unter `.data/` im Projektordner persistiert. Beim ersten Start werden Schema und
+Demo-Daten angelegt. `npm run db:reset` setzt die lokale Datenbank zurück.
 
-## Struktur
+## Vercel + Neon Postgres
+
+1. Repo zu GitHub pushen → auf vercel.com importieren.
+2. Vercel-Dashboard → Projekt → **Storage** → **Create Database** → *Neon Postgres*.
+   `DATABASE_URL` wird automatisch gesetzt.
+3. Environment Variables ergänzen:
+   - `TOKEN_SECRET` — langer Zufallswert; signiert die Mitarbeiter-/Kunden-Links.
+   - `CRON_SECRET` *(optional)* — schützt die Cron-Route.
+4. Deploy. Schema + Demo-Daten werden beim ersten Zugriff automatisch angelegt.
+
+Lokal gegen Neon testen: `vercel env pull .env.development.local`.
+
+## Wichtige Pfade
 
 ```
-app/
-  page.tsx                    Dashboard (Liste der A4-Blätter)
-  erfassen/page.tsx           Eingabemaske (eine Zeile fürs Blatt)
-  stundenzettel/[id]/page.tsx A4-Ansicht + Drucken/PDF
-components/
-  a4-sheet.tsx                Das feste A4-Blatt (druckfertig)
-  app-shell.tsx               Sidebar mit animiertem Auf-/Zuklappen
-  dashboard.tsx               Aktionskarten, Filter, Suche, Liste
-  timesheet-form.tsx          Formular (react-hook-form + zod)
-  signature-modal.tsx         Wiederverwendbares Signatur-Modal
-  print-button.tsx            window.print() → Drucken / Als PDF speichern
-  status-badge.tsx            Punkt-Badges (Offen/Eingereicht/Genehmigt)
-  ui/                         Button, Input, Label, Textarea (shadcn-Stil)
-lib/
-  data.ts                     Typen (Sheet/Row) + Mock-Daten
-  time.ts                     Check-in/-out/Pause → gearbeitete Zeit
-  validations.ts              zod-Schema (exakt die DB-Spalten)
-  actions.ts                  Server Action createTimesheetRow (DB-ready)
+app/page.tsx                      Dashboard (nach Datum gruppiert)
+app/stundenzettel/[id]/           Interaktives A4-Blatt + Änderungshistorie
+app/erfassen/[token]/             Mitarbeiter-Questionnaire (signierter Link)
+app/unterschrift/[token]/         Kunden-Gegenzeichnung (signierter Link)
+app/api/eintrag/                  Abgabe-Endpoint (auch für Offline-Sync)
+app/api/cron/erinnerungen/        24h-Erinnerungslogik (Vercel Cron, s. vercel.json)
+lib/db.ts                         Neon (pg) ↔ PGlite-Fallback, Auto-Migration + Seed
+lib/schema.ts · lib/seed.ts       Tabellen + Demo-Daten
+lib/queries.ts · lib/actions.ts   Datenzugriff + Server Actions (mit Audit-Log)
+lib/invite-token.ts               Signierte HMAC-Links (zustandslos)
+lib/audit.ts                      Audit-Log + SHA-256-Hashing
+lib/offline.ts · public/sw.js     Offline-Queue (IndexedDB) + Service Worker
 ```
 
-## A4 & Druck
+## Hinweise
 
-Das Blatt ist in mm dimensioniert (`w-[210mm] min-h-[297mm]`, feste Zeilenhöhe `11mm`, 12 Zeilen pro Blatt — leere Zeilen bleiben sichtbar, damit die Struktur immer identisch ist). `@page { size: A4; margin: 0 }` plus `print:hidden` auf Sidebar/Toolbar sorgen dafür, dass beim Drucken (Strg/Cmd + P) exakt das Blatt auf der Seite landet — dort auch „Als PDF speichern" möglich.
-
-## Vercel Postgres anbinden
-
-1. Vercel-Dashboard → Projekt → **Storage** → **Create Database** → *Postgres (Neon)*. `POSTGRES_URL` wird automatisch gesetzt; lokal `vercel env pull .env.development.local`.
-2. `npm i @vercel/postgres`
-3. Zwei Tabellen anlegen — das SQL steht als Kommentar in `lib/actions.ts` (`timesheet_sheets` + `timesheet_rows` mit genau deinen Spalten).
-4. In `lib/actions.ts` den auskommentierten `sql`-INSERT aktivieren.
-5. Mock-Daten durch Queries ersetzen, z. B. in `app/stundenzettel/[id]/page.tsx`:
-
-```ts
-import { sql } from "@vercel/postgres";
-
-const { rows } = await sql`
-  SELECT vorname, nachname, datum, check_in, check_out, pause_min, signatur
-  FROM timesheet_rows
-  WHERE sheet_id = ${id}
-  ORDER BY datum, nachname
-`;
-```
-
-Signaturen: kommen als PNG-Data-URL aus dem Modal; fürs TEXT-Feld ok, bei Volumen besser **Vercel Blob** (`@vercel/blob`) und nur die URL speichern.
+- **Login**: Das Dashboard ist bewusst noch offen (Testphase). Vor dem echten
+  Einsatz einen Schutz ergänzen (z. B. Passwort/Basic Auth via Middleware) —
+  die Token-Links für Mitarbeiter/Kunden funktionieren unabhängig davon.
+- **Audit-Akteur**: Ohne Login werden Dashboard-Änderungen als „Disposition“
+  protokolliert. Mit Login kann hier der echte Benutzername stehen.
+- **Druck/PDF**: Strg/Cmd + P auf dem A4-Blatt — dort auch „Als PDF speichern“.

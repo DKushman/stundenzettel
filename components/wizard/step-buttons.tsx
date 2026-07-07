@@ -15,7 +15,7 @@ export function StepButtons({
   pending?: boolean;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-[68px] border-t border-line bg-card/95 px-4 pb-3 pt-3 backdrop-blur lg:static lg:mt-8 lg:border-0 lg:bg-transparent lg:p-0">
+    <div className="fixed inset-x-0 bottom-0 border-t border-line bg-card/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:static lg:mt-8 lg:border-0 lg:bg-transparent lg:p-0">
       <div className="mx-auto flex max-w-xl gap-3">
         {onZurueck && (
           <Button variant="secondary" onClick={onZurueck} className="shrink-0">

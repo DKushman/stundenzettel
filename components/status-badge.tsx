@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { statusLabel, statusLabelSheet, type SchichtStatus, type SheetStatus } from "@/lib/data";
+import { statusLabel, type SchichtStatus } from "@/lib/data";
 
 type Tone = "blau" | "orange" | "gruen" | "rot" | "grau";
 
@@ -36,23 +36,14 @@ export function Badge({
 }
 
 const statusTone: Record<SchichtStatus, Tone> = {
-  geplant: "blau",
+  geplant: "grau",
   offen: "orange",
+  teilweise: "orange",
   ueberfaellig: "rot",
-  vollstaendig: "gruen",
+  erfasst: "blau",
+  unterschrieben: "gruen",
 };
 
-/** Punkt-Badge im Stil der Vorlage, abgeleitet aus dem Schicht-Status. */
-export function SchichtStatusBadge({ status }: { status: SchichtStatus }) {
+export function StatusBadge({ status }: { status: SchichtStatus }) {
   return <Badge tone={statusTone[status]}>{statusLabel[status]}</Badge>;
-}
-
-const sheetTone: Record<SheetStatus, Tone> = {
-  offen: "orange",
-  eingereicht: "blau",
-  genehmigt: "gruen",
-};
-
-export function StatusBadge({ status }: { status: SheetStatus }) {
-  return <Badge tone={sheetTone[status]}>{statusLabelSheet[status]}</Badge>;
 }

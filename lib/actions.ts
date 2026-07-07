@@ -1,150 +1,207 @@
 "use server";
 
-import { createHash, randomUUID } from "crypto";
-import { cookies, headers } from "next/headers";
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { eintragSchema, type EintragInput } from "./validations";
-import { appendEintragToSheets, getSchicht, eintraege as vorhandene, type Eintrag } from "./data";
+import { query } from "./db";
+import { logAudit, sha256 } from "./audit";
+import { verifyToken } from "./invite-token";
 import { arbeitsMinuten } from "./time";
 
 /* ────────────────────────────────────────────────────────────────────
- * Server Action: Stundenzettel einreichen (DocuSign-Logik)
- *
- * Antwort auf die drei Kernfragen:
- *
- * 1) GATEKEEPING passiert doppelt: der Wizard validiert jeden Step
- *    clientseitig (zod pro Step), und HIER wird ALLES erneut geprüft —
- *    inkl. "ist der Mitarbeiter überhaupt in dieser Schicht eingeteilt?"
- *    und "hat er schon abgegeben?". Client-Checks sind Komfort,
- *    Server-Checks sind die Wahrheit.
- *
- * 2) AUDIT-STEMPEL: created_at, Session-ID (Cookie, sonst neu erzeugt),
- *    User-Agent und IP werden serverseitig erfasst — der Client kann
- *    sie nicht manipulieren.
- *
- * 3) SIGNATUR + FELDER = EIN DOKUMENT: Die Unterschrift (PNG-Data-URL)
- *    wird als Spalte IM SELBEN Datensatz gespeichert wie die Zeitdaten
- *    (eine Zeile in `timesheet_eintraege`). Zusätzlich wird ein
- *    SHA-256-Hash über die kanonisch serialisierten Felder INKLUSIVE
- *    der Signatur berechnet und mitgespeichert. Damit ist kryptografisch
- *    belegbar, dass genau diese Unterschrift zu genau diesen Werten
- *    gehört — wird später ein Feld verändert, passt der Hash nicht mehr.
+ * Server Actions für das Dashboard (Disposition) und den Kunden-Link.
+ * Jede Änderung landet im Audit-Log: wer, wann, was, alt → neu.
  * ──────────────────────────────────────────────────────────────────── */
 
-export async function submitStundenzettel(input: EintragInput) {
-  // ── 1. Vollständige Validierung (Gatekeeping, Stufe 1) ────────────
-  const parsed = eintragSchema.safeParse(input);
-  if (!parsed.success) {
-    return fehler(parsed.error.issues[0]?.message ?? "Ungültige Eingabe.");
+const FELD_SPALTE = {
+  checkIn: "check_in",
+  checkOut: "check_out",
+  pauseMin: "pause_min",
+  notiz: "notiz",
+} as const;
+
+export type EditierbaresFeld = keyof typeof FELD_SPALTE;
+
+const ZEIT_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function feldPruefen(feld: EditierbaresFeld, wert: string): string | null {
+  if (feld === "checkIn" || feld === "checkOut") {
+    if (!ZEIT_REGEX.test(wert)) return "Bitte eine Uhrzeit im Format HH:MM angeben.";
   }
-  const data = parsed.data;
-
-  // ── 2. Fachliche Prüfungen (Gatekeeping, Stufe 2) ─────────────────
-  const schicht = getSchicht(data.schichtId);
-  if (!schicht) return fehler("Diese Schicht existiert nicht.");
-
-  if (!schicht.mitarbeiterIds.includes(data.mitarbeiterId)) {
-    return fehler("Du bist in dieser Schicht nicht eingeteilt und kannst keinen Stundenzettel abgeben.");
+  if (feld === "pauseMin") {
+    const n = Number(wert);
+    if (!Number.isInteger(n) || n < 0 || n > 480) return "Pause muss zwischen 0 und 480 Minuten liegen.";
   }
+  if (feld === "notiz" && wert.length > 200) return "Notiz maximal 200 Zeichen.";
+  return null;
+}
 
-  // Doppel-Abgabe-Schutz (mit DB: UNIQUE(schicht_id, mitarbeiter_id))
-  const schonDa = vorhandene.some(
-    (e) => e.schichtId === data.schichtId && e.mitarbeiterId === data.mitarbeiterId
+type EintragRow = {
+  id: string;
+  check_in: string;
+  check_out: string;
+  pause_min: number;
+  notiz: string | null;
+};
+
+/**
+ * Inline-Bearbeitung auf dem A4-Blatt. Existiert noch kein Eintrag für
+ * die Person, wird einer angelegt (Quelle: Disposition, ohne Signatur).
+ */
+export async function eintragFeldSpeichern(input: {
+  schichtId: string;
+  mitarbeiterId: string;
+  feld: EditierbaresFeld;
+  wert: string;
+}) {
+  const { schichtId, mitarbeiterId, feld } = input;
+  const wert = input.wert.trim();
+
+  if (!(feld in FELD_SPALTE)) return { ok: false as const, error: "Unbekanntes Feld." };
+  const fehler = feldPruefen(feld, wert);
+  if (fehler) return { ok: false as const, error: fehler };
+
+  const [ma] = await query<{ vorname: string; nachname: string }>(
+    `SELECT vorname, nachname FROM mitarbeiter WHERE id = $1`,
+    [mitarbeiterId]
   );
-  if (schonDa) return fehler("Für diese Schicht wurde bereits ein Stundenzettel abgegeben.");
+  if (!ma) return { ok: false as const, error: "Mitarbeiter nicht gefunden." };
 
-  // ── 3. Audit-Stempel serverseitig erzeugen ────────────────────────
-  const h = await headers();
-  const cookieStore = await cookies();
-  const sessionId = cookieStore.get("sz_session")?.value ?? randomUUID();
-  const userAgent = h.get("user-agent") ?? "unbekannt";
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unbekannt";
-  const createdAt = new Date().toISOString();
-  const gearbeiteteMin = arbeitsMinuten(data.checkIn, data.checkOut, data.pauseMin);
+  const [zu] = await query(
+    `SELECT 1 FROM schicht_mitarbeiter WHERE schicht_id=$1 AND mitarbeiter_id=$2`,
+    [schichtId, mitarbeiterId]
+  );
+  if (!zu) return { ok: false as const, error: "Diese Person ist der Schicht nicht zugewiesen." };
 
-  // ── 4. Dokument-Hash: bindet Unterschrift an die Felder ──────────
-  const kanonisch = JSON.stringify({
-    schichtId: data.schichtId,
-    mitarbeiterId: data.mitarbeiterId,
-    checkIn: data.checkIn,
-    checkOut: data.checkOut,
-    pauseMin: data.pauseMin,
-    notiz: data.notiz ?? "",
-    signatur: data.signatur, // die Signatur ist Teil des gehashten Dokuments
-    createdAt,
-  });
-  const dokumentHash = createHash("sha256").update(kanonisch).digest("hex");
+  const [vorhanden] = await query<EintragRow>(
+    `SELECT id, check_in, check_out, pause_min, notiz FROM eintraege
+     WHERE schicht_id=$1 AND mitarbeiter_id=$2`,
+    [schichtId, mitarbeiterId]
+  );
 
-  const eintrag: Eintrag = {
-    id: `e_${randomUUID()}`,
-    schichtId: data.schichtId,
-    mitarbeiterId: data.mitarbeiterId,
-    checkIn: data.checkIn,
-    checkOut: data.checkOut,
-    pauseMin: data.pauseMin,
-    notiz: data.notiz || undefined,
-    signatur: data.signatur,
-    audit: { createdAt, sessionId, userAgent, dokumentHash },
-  };
+  const jetzt = new Date().toISOString();
+  const spalte = FELD_SPALTE[feld];
+  const neuerWert = feld === "pauseMin" ? String(Number(wert)) : wert;
 
-  // ── 5. Persistenz (Vercel Postgres) ───────────────────────────────
-  //
-  //    CREATE TABLE timesheet_eintraege (
-  //      id              TEXT PRIMARY KEY,
-  //      schicht_id      TEXT NOT NULL REFERENCES schichten(id),
-  //      mitarbeiter_id  TEXT NOT NULL REFERENCES mitarbeiter(id),
-  //      check_in        TIME NOT NULL,
-  //      check_out       TIME NOT NULL,
-  //      pause_min       INT  NOT NULL DEFAULT 0,
-  //      gearbeitete_min INT  NOT NULL,
-  //      notiz           TEXT,
-  //      signatur        TEXT NOT NULL,           -- PNG-Data-URL: gleiche Zeile wie die Felder
-  //      -- Audit-Spalten (Integrität der Unterschrift):
-  //      created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  //      session_id      TEXT NOT NULL,
-  //      user_agent      TEXT NOT NULL,
-  //      ip              TEXT,
-  //      dokument_hash   CHAR(64) NOT NULL,       -- SHA-256 über Felder + Signatur
-  //      UNIQUE (schicht_id, mitarbeiter_id)      -- Doppel-Abgabe-Schutz auf DB-Ebene
-  //    );
-  //
-  //    import { sql } from "@vercel/postgres";
-  //    await sql`
-  //      INSERT INTO timesheet_eintraege
-  //        (id, schicht_id, mitarbeiter_id, check_in, check_out, pause_min,
-  //         gearbeitete_min, notiz, signatur,
-  //         created_at, session_id, user_agent, ip, dokument_hash)
-  //      VALUES
-  //        (${eintrag.id}, ${data.schichtId}, ${data.mitarbeiterId},
-  //         ${data.checkIn}, ${data.checkOut}, ${data.pauseMin},
-  //         ${gearbeiteteMin}, ${data.notiz ?? null}, ${data.signatur},
-  //         ${createdAt}, ${sessionId}, ${userAgent}, ${ip}, ${dokumentHash})
-  //    `;
-  //
-  //    Signatur-Größe: Bei vielen Nutzern die Data-URL in Vercel Blob
-  //    auslagern (`@vercel/blob`) und hier nur die URL speichern —
-  //    der Hash wird dann über die Blob-URL + Felder gebildet.
-  // ───────────────────────────────────────────────────────────────────
+  if (!vorhanden) {
+    const [schicht] = await query<{ beginn_geplant: string; ende_geplant: string }>(
+      `SELECT beginn_geplant, ende_geplant FROM schichten WHERE id=$1`,
+      [schichtId]
+    );
+    if (!schicht) return { ok: false as const, error: "Schicht nicht gefunden." };
 
-  console.log("Stundenzettel eingereicht:", {
-    ...eintrag,
-    signatur: "[png]",
-    gearbeiteteMin,
-    ip,
+    const basis = {
+      check_in: schicht.beginn_geplant,
+      check_out: schicht.ende_geplant,
+      pause_min: 30,
+      notiz: null as string | null,
+    };
+    (basis as Record<string, unknown>)[spalte] = feld === "pauseMin" ? Number(neuerWert) : neuerWert;
+
+    const id = randomUUID();
+    await query(
+      `INSERT INTO eintraege (id, schicht_id, mitarbeiter_id, check_in, check_out, pause_min, notiz, quelle, erstellt_am)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'disposition',$8)`,
+      [id, schichtId, mitarbeiterId, basis.check_in, basis.check_out, basis.pause_min, basis.notiz, jetzt]
+    );
+    await logAudit({
+      entitaet: "eintrag",
+      entitaetId: id,
+      schichtId,
+      aktion: "erstellt",
+      feld,
+      altWert: null,
+      neuWert: neuerWert,
+      akteur: `Disposition (für ${ma.vorname} ${ma.nachname})`,
+      akteurTyp: "disposition",
+    });
+  } else {
+    const altWert =
+      feld === "pauseMin"
+        ? String(vorhanden.pause_min)
+        : String((vorhanden as unknown as Record<string, unknown>)[spalte] ?? "");
+    if (altWert === neuerWert) return { ok: true as const };
+
+    // Plausibilität: Check-out nach Check-in, Pause kürzer als Anwesenheit
+    const checkIn = feld === "checkIn" ? neuerWert : vorhanden.check_in;
+    const checkOut = feld === "checkOut" ? neuerWert : vorhanden.check_out;
+    const pause = feld === "pauseMin" ? Number(neuerWert) : Number(vorhanden.pause_min);
+    if (checkOut <= checkIn) return { ok: false as const, error: "Check-out muss nach dem Check-in liegen." };
+    if (arbeitsMinuten(checkIn, checkOut, 0) <= pause)
+      return { ok: false as const, error: "Die Pause ist länger als die gesamte Anwesenheit." };
+
+    await query(
+      `UPDATE eintraege SET ${spalte} = $1, geaendert_am = $2 WHERE id = $3`,
+      [feld === "pauseMin" ? Number(neuerWert) : neuerWert, jetzt, vorhanden.id]
+    );
+    await logAudit({
+      entitaet: "eintrag",
+      entitaetId: vorhanden.id,
+      schichtId,
+      aktion: "geaendert",
+      feld,
+      altWert,
+      neuWert: neuerWert,
+      akteur: `Disposition (Eintrag von ${ma.vorname} ${ma.nachname})`,
+      akteurTyp: "disposition",
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/stundenzettel/${schichtId}`);
+  return { ok: true as const };
+}
+
+/** Kunden-Unterschrift über den signierten Link — zeichnet das ganze Blatt gegen. */
+export async function kundeUnterschreiben(input: {
+  token: string;
+  name: string;
+  signatur: string;
+}) {
+  const v = verifyToken(input.token, "kunde");
+  if (!v.ok) return { ok: false as const, error: v.error };
+
+  const name = input.name.trim();
+  if (name.length < 2) return { ok: false as const, error: "Bitte den Namen angeben." };
+  if (!input.signatur.startsWith("data:image"))
+    return { ok: false as const, error: "Unterschrift fehlt." };
+
+  const [schicht] = await query<{ id: string; kunde_signatur: string | null }>(
+    `SELECT id, kunde_signatur FROM schichten WHERE id = $1`,
+    [v.schichtId]
+  );
+  if (!schicht) return { ok: false as const, error: "Schicht nicht gefunden." };
+  if (schicht.kunde_signatur)
+    return { ok: false as const, error: "Dieser Stundenzettel wurde bereits unterschrieben." };
+
+  const eintraege = await query(
+    `SELECT id, mitarbeiter_id, check_in, check_out, pause_min, dokument_hash
+     FROM eintraege WHERE schicht_id = $1 ORDER BY mitarbeiter_id`,
+    [v.schichtId]
+  );
+
+  const jetzt = new Date().toISOString();
+  // Hash bindet die Kunden-Unterschrift an den aktuellen Stand aller Einträge
+  const dokumentHash = sha256(
+    JSON.stringify({ schichtId: v.schichtId, eintraege, name, signatur: input.signatur, jetzt })
+  );
+
+  await query(
+    `UPDATE schichten
+     SET kunde_name=$1, kunde_signatur=$2, kunde_unterschrieben_am=$3, kunde_dokument_hash=$4
+     WHERE id=$5`,
+    [name, input.signatur, jetzt, dokumentHash, v.schichtId]
+  );
+  await logAudit({
+    entitaet: "schicht",
+    entitaetId: v.schichtId,
+    schichtId: v.schichtId,
+    aktion: "kunde_unterschrieben",
+    akteur: name,
+    akteurTyp: "kunde",
+    dokumentHash,
   });
 
   revalidatePath("/");
-  revalidatePath("/admin");
-  revalidatePath(`/q`);
-  revalidatePath(`/schicht/${data.schichtId}`);
-  revalidatePath(`/stundenzettel/${data.schichtId}`);
-
-  vorhandene.push(eintrag);
-  appendEintragToSheets(eintrag);
-
-  return { ok: true as const, eintrag, gearbeiteteMin };
-}
-
-function fehler(error: string) {
-  return { ok: false as const, error };
+  revalidatePath(`/stundenzettel/${v.schichtId}`);
+  return { ok: true as const, unterschriebenAm: jetzt };
 }

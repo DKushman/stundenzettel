@@ -4,28 +4,30 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2, Clock, MapPin, Users } from "lucide-react";
 import { schrittSchichtSchema, type SchrittSchicht } from "@/lib/validations";
-import { type Auftrag, type Schicht, getMitarbeiter } from "@/lib/data";
+import type { Mitarbeiter } from "@/lib/data";
 import { useAppStore, type WizardDraft } from "@/lib/store";
 import { formatDatumLang } from "@/lib/time";
 import { AvatarStack } from "@/components/avatar";
 import { StepButtons } from "./step-buttons";
+import type { WizardAuftrag, WizardSchicht } from "./wizard";
 
 /** Step 1 — Schicht/Projekt prüfen und Anwesenheit bestätigen (Gatekeeping). */
 export function StepSchicht({
   schicht,
   auftrag,
+  team,
   draft,
-  schichtId,
+  token,
   onWeiter,
 }: {
-  schicht: Schicht;
-  auftrag: Auftrag;
+  schicht: WizardSchicht;
+  auftrag: WizardAuftrag;
+  team: Mitarbeiter[];
   draft: WizardDraft;
-  schichtId: string;
+  token: string;
   onWeiter: () => void;
 }) {
   const updateDraft = useAppStore((s) => s.updateDraft);
-  const team = schicht.mitarbeiterIds.map(getMitarbeiter);
 
   const { register, handleSubmit, formState: { errors } } = useForm<SchrittSchicht>({
     resolver: zodResolver(schrittSchichtSchema),
@@ -33,12 +35,12 @@ export function StepSchicht({
   });
 
   const onSubmit = (data: SchrittSchicht) => {
-    updateDraft(schichtId, { bestaetigt: data.bestaetigt });
+    updateDraft(token, { bestaetigt: data.bestaetigt });
     onWeiter();
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="pb-40 lg:pb-0">
+    <form onSubmit={handleSubmit(onSubmit)} className="pb-32 lg:pb-0">
       <h1 className="text-2xl font-semibold tracking-tight">Deine Schicht</h1>
       <p className="mt-1.5 text-ink-soft">Prüfe die Angaben, bevor du deine Zeiten erfasst.</p>
 

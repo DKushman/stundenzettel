@@ -4,25 +4,25 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle } from "lucide-react";
 import { schrittZeitenSchema, type SchrittZeiten } from "@/lib/validations";
-import { type Schicht } from "@/lib/data";
 import { useAppStore, type WizardDraft } from "@/lib/store";
 import { arbeitsMinuten, minutenAlsZeit } from "@/lib/time";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { StepButtons } from "./step-buttons";
+import type { WizardSchicht } from "./wizard";
 
 /** Step 2 — Zeit-Stempel: Check-in, Check-out, Pause (+ optionale Notiz). */
 export function StepZeiten({
   schicht,
   draft,
-  schichtId,
+  token,
   onWeiter,
   onZurueck,
 }: {
-  schicht: Schicht;
+  schicht: WizardSchicht;
   draft: WizardDraft;
-  schichtId: string;
+  token: string;
   onWeiter: () => void;
   onZurueck: () => void;
 }) {
@@ -43,7 +43,7 @@ export function StepZeiten({
   const langerTag = minuten > 600; // Plausibilitätswarnung > 10 h
 
   const onSubmit = (data: SchrittZeiten) => {
-    updateDraft(schichtId, {
+    updateDraft(token, {
       checkIn: data.checkIn,
       checkOut: data.checkOut,
       pauseMin: data.pauseMin,
@@ -53,7 +53,7 @@ export function StepZeiten({
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="pb-40 lg:pb-0">
+    <form onSubmit={handleSubmit(onSubmit)} className="pb-32 lg:pb-0">
       <h1 className="text-2xl font-semibold tracking-tight">Deine Zeiten</h1>
       <p className="mt-1.5 text-ink-soft">
         Geplant war {schicht.beginnGeplant}–{schicht.endeGeplant} Uhr — trage deine tatsächlichen Zeiten ein.

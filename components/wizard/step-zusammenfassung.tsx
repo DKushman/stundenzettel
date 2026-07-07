@@ -3,30 +3,31 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { schrittZusammenfassungSchema, type SchrittZusammenfassung } from "@/lib/validations";
-import { type Auftrag, type Schicht, getMitarbeiter } from "@/lib/data";
+import type { Mitarbeiter } from "@/lib/data";
 import { useAppStore, type WizardDraft } from "@/lib/store";
 import { arbeitsMinuten, minutenAlsZeit, formatDatumLang } from "@/lib/time";
 import { StepButtons } from "./step-buttons";
+import type { WizardAuftrag, WizardSchicht } from "./wizard";
 
 /** Step 3 — Zusammenfassung: alles auf einen Blick, Richtigkeit bestätigen. */
 export function StepZusammenfassung({
   schicht,
   auftrag,
+  mitarbeiter,
   draft,
-  schichtId,
+  token,
   onWeiter,
   onZurueck,
 }: {
-  schicht: Schicht;
-  auftrag: Auftrag;
+  schicht: WizardSchicht;
+  auftrag: WizardAuftrag;
+  mitarbeiter: Mitarbeiter;
   draft: WizardDraft;
-  schichtId: string;
+  token: string;
   onWeiter: () => void;
   onZurueck: () => void;
 }) {
   const updateDraft = useAppStore((s) => s.updateDraft);
-  const currentUserId = useAppStore((s) => s.currentUserId);
-  const ich = getMitarbeiter(currentUserId);
   const minuten = arbeitsMinuten(draft.checkIn, draft.checkOut, draft.pauseMin);
 
   const { register, handleSubmit, formState: { errors } } = useForm<SchrittZusammenfassung>({
@@ -35,12 +36,12 @@ export function StepZusammenfassung({
   });
 
   const onSubmit = (data: SchrittZusammenfassung) => {
-    updateDraft(schichtId, { richtigkeit: data.richtigkeit });
+    updateDraft(token, { richtigkeit: data.richtigkeit });
     onWeiter();
   };
 
   const zeilen: [string, string][] = [
-    ["Mitarbeiter", `${ich.vorname} ${ich.nachname}`],
+    ["Mitarbeiter", `${mitarbeiter.vorname} ${mitarbeiter.nachname}`],
     ["Auftraggeber", auftrag.auftraggeber],
     ["Einsatz", `${auftrag.titel} · ${auftrag.ort}`],
     ["Datum", formatDatumLang(schicht.datum)],
@@ -52,7 +53,7 @@ export function StepZusammenfassung({
   if (draft.notiz) zeilen.push(["Notiz", draft.notiz]);
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="pb-40 lg:pb-0">
+    <form onSubmit={handleSubmit(onSubmit)} className="pb-32 lg:pb-0">
       <h1 className="text-2xl font-semibold tracking-tight">Alles korrekt?</h1>
       <p className="mt-1.5 text-ink-soft">Diese Angaben werden mit deiner Unterschrift verknüpft.</p>
 

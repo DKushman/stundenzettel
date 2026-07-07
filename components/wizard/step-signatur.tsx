@@ -5,36 +5,31 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, PenLine, ShieldCheck } from "lucide-react";
 import { schrittSignaturSchema, type SchrittSignatur } from "@/lib/validations";
-import { type Schicht, type Eintrag } from "@/lib/data";
 import { useAppStore, type WizardDraft } from "@/lib/store";
-import { submitStundenzettel } from "@/lib/actions";
+import { submitEintrag, type SubmitErgebnis } from "@/lib/offline";
 import { SignatureModal } from "@/components/signature-modal";
 import { StepButtons } from "./step-buttons";
 
+export type AbgabeErgebnis = Extract<SubmitErgebnis, { ok: true }>;
+
 /**
- * Step 4 — Signature-Flow:
- * "Unterschreiben" öffnet das Fullscreen-Modal. Erst nach "Unterschrift
- * übernehmen" ist die Signatur im Draft — und erst dann wird der
- * "Jetzt absenden"-Button freigeschaltet (Gatekeeping). Absenden ruft
- * die Server Action auf, die den Audit-Stempel + Dokument-Hash erzeugt.
+ * Step 4 — Signatur + Absenden.
+ * Gesendet wird über /api/eintrag; ohne Verbindung landet die Abgabe in
+ * der Offline-Queue (IndexedDB) und wird automatisch nachgereicht.
  */
 export function StepSignatur({
-  schicht,
   draft,
-  schichtId,
+  token,
   onZurueck,
   onFertig,
 }: {
-  schicht: Schicht;
   draft: WizardDraft;
-  schichtId: string;
+  token: string;
   onZurueck: () => void;
-  onFertig: (e: Eintrag) => void;
+  onFertig: (e: AbgabeErgebnis) => void;
 }) {
   const updateDraft = useAppStore((s) => s.updateDraft);
   const resetDraft = useAppStore((s) => s.resetDraft);
-  const addEintrag = useAppStore((s) => s.addEintrag);
-  const currentUserId = useAppStore((s) => s.currentUserId);
   const [modalOffen, setModalOffen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [serverFehler, setServerFehler] = useState<string | null>(null);
@@ -48,21 +43,19 @@ export function StepSignatur({
   const onSubmit = (data: SchrittSignatur) => {
     setServerFehler(null);
     startTransition(async () => {
-      const result = await submitStundenzettel({
-        schichtId,
-        mitarbeiterId: currentUserId,
-        bestaetigt: draft.bestaetigt,
+      const result = await submitEintrag({
+        token,
         checkIn: draft.checkIn,
         checkOut: draft.checkOut,
         pauseMin: draft.pauseMin,
         notiz: draft.notiz,
-        richtigkeit: draft.richtigkeit,
         signatur: data.signatur,
+        bestaetigt: true,
+        richtigkeit: true,
       });
       if (result.ok) {
-        addEintrag(result.eintrag); // Demo-Spiegel der DB
-        resetDraft(schichtId);      // Draft ist verbraucht
-        onFertig(result.eintrag);
+        resetDraft(token);
+        onFertig(result);
       } else {
         setServerFehler(result.error);
       }
@@ -70,7 +63,7 @@ export function StepSignatur({
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="pb-40 lg:pb-0">
+    <form onSubmit={handleSubmit(onSubmit)} className="pb-32 lg:pb-0">
       <h1 className="text-2xl font-semibold tracking-tight">Unterschreiben</h1>
       <p className="mt-1.5 text-ink-soft">
         Mit deiner Unterschrift reichst du den Stundenzettel verbindlich ein.
@@ -98,7 +91,7 @@ export function StepSignatur({
       {signatur && (
         <button
           type="button"
-          onClick={() => { setValue("signatur", "", { shouldValidate: false }); updateDraft(schichtId, { signatur: "" }); }}
+          onClick={() => { setValue("signatur", "", { shouldValidate: false }); updateDraft(token, { signatur: "" }); }}
           className="mt-2 text-sm text-ink-soft underline-offset-2 hover:underline"
         >
           Unterschrift verwerfen und neu unterschreiben
@@ -108,8 +101,9 @@ export function StepSignatur({
 
       <p className="mt-5 flex items-start gap-2.5 rounded-xl bg-surface px-4 py-3 text-sm text-ink-soft">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-        Beim Absenden erzeugt der Server einen Audit-Stempel (Zeitpunkt, Session,
-        Gerät) und einen Prüf-Hash, der deine Unterschrift fest mit den Angaben verknüpft.
+        Beim Absenden erzeugt der Server einen Audit-Stempel (Zeitpunkt, Gerät, IP)
+        und einen Prüf-Hash, der deine Unterschrift fest mit den Angaben verknüpft.
+        Ohne Empfang wird die Abgabe gespeichert und automatisch nachgereicht.
       </p>
 
       {serverFehler && (
@@ -128,7 +122,7 @@ export function StepSignatur({
         onClose={() => setModalOffen(false)}
         onConfirm={(dataUrl) => {
           setValue("signatur", dataUrl, { shouldValidate: true });
-          updateDraft(schichtId, { signatur: dataUrl });
+          updateDraft(token, { signatur: dataUrl });
         }}
       />
     </form>
