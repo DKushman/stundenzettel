@@ -1,4 +1,5 @@
 import path from "path";
+import { getDatabaseUrl, isProduction, requireDatabaseUrl } from "./env";
 import { SCHEMA_SQL } from "./schema";
 import { seedDaten } from "./seed";
 
@@ -26,7 +27,9 @@ declare global {
 }
 
 async function createDb(): Promise<Db> {
-  const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
+  if (isProduction()) requireDatabaseUrl();
+
+  const url = getDatabaseUrl();
   if (url) {
     const { Pool } = await import("pg");
     const lokal = /localhost|127\.0\.0\.1/.test(url);

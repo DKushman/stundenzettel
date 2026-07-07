@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { getTokenSecret } from "./env";
 
 /**
  * Signierte, zustandslose Links (HMAC-SHA256) — es müssen keine Tokens
@@ -20,12 +21,8 @@ type TokenPayload = {
 const b64e = (s: string) => Buffer.from(s).toString("base64url");
 const b64d = (s: string) => Buffer.from(s, "base64url").toString("utf8");
 
-function secret() {
-  return process.env.TOKEN_SECRET || "dev-secret-bitte-in-production-aendern";
-}
-
 function sign(payloadPart: string) {
-  return createHmac("sha256", secret()).update(payloadPart).digest("base64url");
+  return createHmac("sha256", getTokenSecret()).update(payloadPart).digest("base64url");
 }
 
 function createToken(payload: Omit<TokenPayload, "exp">, expiresInHours: number) {

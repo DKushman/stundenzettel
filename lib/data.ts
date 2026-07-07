@@ -57,6 +57,7 @@ export type FaelligeErinnerung = {
   name: string;
   /** Pfad des zu verschickenden Links (relativ, ohne Origin). */
   pfad: string;
+  email?: string | null;
 };
 
 export type SchichtStatus =

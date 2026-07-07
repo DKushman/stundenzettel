@@ -127,6 +127,7 @@ export async function getSchichtViews(): Promise<SchichtView[]> {
             mitarbeiterId: z.mitarbeiter.id,
             name: `${z.mitarbeiter.vorname} ${z.mitarbeiter.nachname}`,
             pfad: `/erfassen/${z.token}`,
+            email: z.mitarbeiter.email,
           });
         }
       }
@@ -135,6 +136,7 @@ export async function getSchichtViews(): Promise<SchichtView[]> {
           typ: "kunde",
           name: s.ansprechpartner ?? s.auftraggeber,
           pfad: `/unterschrift/${kToken}`,
+          email: s.auftrag_email,
         });
       }
     }
