@@ -29,6 +29,8 @@ const config: Config = {
           progressBg: "#FBF3E7",
           done: "#1CA97A",         // Genehmigt → grün ("Erledigt")
           doneBg: "#E7F6EF",
+          teilweise: "#8B5CF6",    // Teilweise erfasst → lila
+          teilweiseBg: "#F3EEFE",
         },
       },
       borderRadius: {

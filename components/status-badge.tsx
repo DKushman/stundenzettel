@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { statusLabel, type SchichtStatus } from "@/lib/data";
 
-type Tone = "blau" | "orange" | "gruen" | "rot" | "grau";
+type Tone = "blau" | "orange" | "gruen" | "rot" | "grau" | "lila";
 
 const tones: Record<Tone, { badge: string; dot: string }> = {
   blau: { badge: "bg-status-openBg text-status-open", dot: "bg-status-open" },
@@ -9,6 +9,7 @@ const tones: Record<Tone, { badge: string; dot: string }> = {
   gruen: { badge: "bg-status-doneBg text-status-done", dot: "bg-status-done" },
   rot: { badge: "bg-red-50 text-red-600", dot: "bg-red-500" },
   grau: { badge: "bg-line/60 text-ink-soft", dot: "bg-ink-faint" },
+  lila: { badge: "bg-status-teilweiseBg text-status-teilweise", dot: "bg-status-teilweise" },
 };
 
 export function Badge({
@@ -38,7 +39,7 @@ export function Badge({
 const statusTone: Record<SchichtStatus, Tone> = {
   geplant: "grau",
   offen: "orange",
-  teilweise: "orange",
+  teilweise: "lila",
   ueberfaellig: "rot",
   erfasst: "blau",
   unterschrieben: "gruen",

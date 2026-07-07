@@ -90,6 +90,16 @@ export const statusLabel: Record<SchichtStatus, string> = {
   unterschrieben: "Unterschrieben",
 };
 
+/** Akzentfarbe für Listen-Streifen, Kalender-Punkte usw. */
+export const statusAkzent: Record<SchichtStatus, string> = {
+  geplant: "#9AA0AB",
+  offen: "#E28412",
+  teilweise: "#8B5CF6",
+  ueberfaellig: "#EF4444",
+  erfasst: "#3B82F6",
+  unterschrieben: "#1CA97A",
+};
+
 export type AuditView = {
   id: string;
   entitaet: string;
