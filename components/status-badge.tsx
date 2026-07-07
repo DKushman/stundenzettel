@@ -1,0 +1,58 @@
+import { cn } from "@/lib/utils";
+import { statusLabel, statusLabelSheet, type SchichtStatus, type SheetStatus } from "@/lib/data";
+
+type Tone = "blau" | "orange" | "gruen" | "rot" | "grau";
+
+const tones: Record<Tone, { badge: string; dot: string }> = {
+  blau: { badge: "bg-status-openBg text-status-open", dot: "bg-status-open" },
+  orange: { badge: "bg-status-progressBg text-status-progress", dot: "bg-status-progress" },
+  gruen: { badge: "bg-status-doneBg text-status-done", dot: "bg-status-done" },
+  rot: { badge: "bg-red-50 text-red-600", dot: "bg-red-500" },
+  grau: { badge: "bg-line/60 text-ink-soft", dot: "bg-ink-faint" },
+};
+
+export function Badge({
+  tone,
+  children,
+  className,
+}: {
+  tone: Tone;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const t = tones[tone];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-[13px] font-medium",
+        t.badge,
+        className
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", t.dot)} />
+      {children}
+    </span>
+  );
+}
+
+const statusTone: Record<SchichtStatus, Tone> = {
+  geplant: "blau",
+  offen: "orange",
+  ueberfaellig: "rot",
+  vollstaendig: "gruen",
+};
+
+/** Punkt-Badge im Stil der Vorlage, abgeleitet aus dem Schicht-Status. */
+export function SchichtStatusBadge({ status }: { status: SchichtStatus }) {
+  return <Badge tone={statusTone[status]}>{statusLabel[status]}</Badge>;
+}
+
+const sheetTone: Record<SheetStatus, Tone> = {
+  offen: "orange",
+  eingereicht: "blau",
+  genehmigt: "gruen",
+};
+
+export function StatusBadge({ status }: { status: SheetStatus }) {
+  return <Badge tone={sheetTone[status]}>{statusLabelSheet[status]}</Badge>;
+}
