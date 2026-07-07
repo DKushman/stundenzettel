@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { invalidateSchichtCache } from "@/lib/invalidate";
 import { z } from "zod";
 import { query } from "@/lib/db";
 import { verifyToken } from "@/lib/invite-token";
@@ -129,6 +130,7 @@ export async function POST(request: Request) {
     dokumentHash,
   });
 
+  invalidateSchichtCache();
   revalidatePath("/");
   revalidatePath(`/stundenzettel/${v.schichtId}`);
 

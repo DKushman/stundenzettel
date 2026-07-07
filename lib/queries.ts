@@ -1,3 +1,5 @@
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { query } from "./db";
 import { mitarbeiterToken, kundenToken } from "./invite-token";
 import { isoHeute } from "./time";
@@ -65,8 +67,112 @@ function mapEintrag(e: EintragRow): EintragView {
   };
 }
 
-/** Alle Schichten inkl. Auftrag, Zuweisungen, Einträgen, Status + Tokens. */
-export async function getSchichtViews(): Promise<SchichtView[]> {
+type LookupData = {
+  zuweisungenBySchicht: Map<string, ZuweisungRow[]>;
+  eintraegeBySchichtMa: Map<string, EintragRow>;
+};
+
+function eintragKey(schichtId: string, mitarbeiterId: string) {
+  return `${schichtId}:${mitarbeiterId}`;
+}
+
+function buildLookups(zuweisungen: ZuweisungRow[], eintraege: EintragRow[]): LookupData {
+  const zuweisungenBySchicht = new Map<string, ZuweisungRow[]>();
+  for (const z of zuweisungen) {
+    const list = zuweisungenBySchicht.get(z.schicht_id) ?? [];
+    list.push(z);
+    zuweisungenBySchicht.set(z.schicht_id, list);
+  }
+
+  const eintraegeBySchichtMa = new Map<string, EintragRow>();
+  for (const e of eintraege) {
+    eintraegeBySchichtMa.set(eintragKey(e.schicht_id, e.mitarbeiter_id), e);
+  }
+
+  return { zuweisungenBySchicht, eintraegeBySchichtMa };
+}
+
+function buildSchichtView(
+  s: SchichtRow,
+  lookups: LookupData,
+  opts: { withTokens: boolean }
+): SchichtView {
+  const heute = isoHeute();
+  const jetzt = Date.now();
+  const zuRows = lookups.zuweisungenBySchicht.get(s.id) ?? [];
+
+  const zu: ZuweisungView[] = zuRows.map((z) => {
+    const e = lookups.eintraegeBySchichtMa.get(eintragKey(s.id, z.id));
+    return {
+      mitarbeiter: {
+        id: z.id,
+        vorname: z.vorname,
+        nachname: z.nachname,
+        rolle: z.rolle,
+        farbe: z.farbe,
+        email: z.email,
+      },
+      token: opts.withTokens ? mitarbeiterToken(s.id, z.id) : "",
+      eintrag: e ? mapEintrag(e) : null,
+    };
+  });
+
+  const kunde: KundeView | null =
+    s.kunde_signatur && s.kunde_name && s.kunde_unterschrieben_am
+      ? {
+          name: s.kunde_name,
+          signatur: s.kunde_signatur,
+          unterschriebenAm: s.kunde_unterschrieben_am,
+          dokumentHash: s.kunde_dokument_hash,
+        }
+      : null;
+
+  const faellige: FaelligeErinnerung[] = [];
+  if (istErinnerungFaellig(s.datum, s.ende_geplant, jetzt)) {
+    for (const z of zu) {
+      if (!z.eintrag) {
+        faellige.push({
+          typ: "mitarbeiter",
+          mitarbeiterId: z.mitarbeiter.id,
+          name: `${z.mitarbeiter.vorname} ${z.mitarbeiter.nachname}`,
+          pfad: `/erfassen/${mitarbeiterToken(s.id, z.mitarbeiter.id)}`,
+          email: z.mitarbeiter.email,
+        });
+      }
+    }
+    if (faellige.length === 0 && !kunde && zu.length > 0) {
+      faellige.push({
+        typ: "kunde",
+        name: s.ansprechpartner ?? s.auftraggeber,
+        pfad: `/unterschrift/${kundenToken(s.id)}`,
+        email: s.auftrag_email,
+      });
+    }
+  }
+
+  return {
+    id: s.id,
+    datum: s.datum,
+    beginnGeplant: s.beginn_geplant,
+    endeGeplant: s.ende_geplant,
+    auftrag: {
+      id: s.auftrag_id,
+      titel: s.titel,
+      auftraggeber: s.auftraggeber,
+      ansprechpartner: s.ansprechpartner,
+      email: s.auftrag_email,
+      ort: s.ort,
+      farbe: s.farbe,
+    },
+    zuweisungen: zu,
+    kunde,
+    kundenToken: opts.withTokens ? kundenToken(s.id) : "",
+    status: schichtStatusBerechnen(s.datum, zu, kunde, heute),
+    faelligeErinnerungen: faellige,
+  };
+}
+
+async function loadSchichtListData() {
   const [schichten, zuweisungen, eintraege] = await Promise.all([
     query<SchichtRow>(
       `SELECT s.*, a.titel, a.auftraggeber, a.ansprechpartner, a.email AS auftrag_email, a.ort, a.farbe
@@ -75,126 +181,89 @@ export async function getSchichtViews(): Promise<SchichtView[]> {
     ),
     query<ZuweisungRow>(
       `SELECT z.schicht_id, m.id, m.vorname, m.nachname, m.rolle, m.farbe, m.email
-       FROM schicht_mitarbeiter z JOIN mitarbeiter m ON m.id = z.mitarbeiter_id
-       ORDER BY m.nachname, m.vorname`
+       FROM schicht_mitarbeiter z JOIN mitarbeiter m ON m.id = z.mitarbeiter_id`
     ),
-    query<EintragRow>(`SELECT * FROM eintraege`),
+    query<EintragRow>(
+      `SELECT id, schicht_id, mitarbeiter_id, check_in, check_out, pause_min, notiz, signatur, quelle, dokument_hash, erstellt_am, geaendert_am FROM eintraege`
+    ),
+  ]);
+  return { schichten, lookups: buildLookups(zuweisungen, eintraege) };
+}
+
+const getSchichtViewsCached = unstable_cache(
+  async () => {
+    const { schichten, lookups } = await loadSchichtListData();
+    return schichten.map((s) => buildSchichtView(s, lookups, { withTokens: false }));
+  },
+  ["schicht-views-v1"],
+  { revalidate: 60, tags: ["schichten"] }
+);
+
+/** Alle Schichten für Dashboard/Kalender (ohne Token-Overhead, gecacht). */
+export async function getSchichtViews(): Promise<SchichtView[]> {
+  return getSchichtViewsCached();
+}
+
+/** Einzelne Schicht für A4-Detailseite — nur relevante Daten + Tokens. */
+export const getSchichtViewById = cache(async (id: string): Promise<SchichtView | null> => {
+  const schichten = await query<SchichtRow>(
+    `SELECT s.*, a.titel, a.auftraggeber, a.ansprechpartner, a.email AS auftrag_email, a.ort, a.farbe
+     FROM schichten s JOIN auftraege a ON a.id = s.auftrag_id
+     WHERE s.id = $1`,
+    [id]
+  );
+  const s = schichten[0];
+  if (!s) return null;
+
+  const [zuweisungen, eintraege] = await Promise.all([
+    query<ZuweisungRow>(
+      `SELECT z.schicht_id, m.id, m.vorname, m.nachname, m.rolle, m.farbe, m.email
+       FROM schicht_mitarbeiter z JOIN mitarbeiter m ON m.id = z.mitarbeiter_id
+       WHERE z.schicht_id = $1`,
+      [id]
+    ),
+    query<EintragRow>(
+      `SELECT id, schicht_id, mitarbeiter_id, check_in, check_out, pause_min, notiz, signatur, quelle, dokument_hash, erstellt_am, geaendert_am
+       FROM eintraege WHERE schicht_id = $1`,
+      [id]
+    ),
   ]);
 
-  const heute = isoHeute();
-  const jetzt = Date.now();
+  return buildSchichtView(s, buildLookups(zuweisungen, eintraege), { withTokens: true });
+});
 
-  return schichten.map((s) => {
-    const zu: ZuweisungView[] = zuweisungen
-      .filter((z) => z.schicht_id === s.id)
-      .map((z) => {
-        const e = eintraege.find(
-          (x) => x.schicht_id === s.id && x.mitarbeiter_id === z.id
-        );
-        return {
-          mitarbeiter: {
-            id: z.id,
-            vorname: z.vorname,
-            nachname: z.nachname,
-            rolle: z.rolle,
-            farbe: z.farbe,
-            email: z.email,
-          },
-          token: mitarbeiterToken(s.id, z.id),
-          eintrag: e ? mapEintrag(e) : null,
-        };
-      });
+const getUnternehmenCached = unstable_cache(
+  async () => {
+    const rows = await query<{
+      id: string;
+      auftraggeber: string;
+      titel: string;
+      ort: string;
+      farbe: string;
+      anzahl_schichten: number;
+    }>(
+      `SELECT a.id, a.auftraggeber, a.titel, a.ort, a.farbe,
+              COUNT(s.id)::int AS anzahl_schichten
+       FROM auftraege a
+       LEFT JOIN schichten s ON s.auftrag_id = a.id
+       GROUP BY a.id, a.auftraggeber, a.titel, a.ort, a.farbe
+       ORDER BY a.auftraggeber ASC, a.titel ASC`
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      auftraggeber: r.auftraggeber,
+      titel: r.titel,
+      ort: r.ort,
+      farbe: r.farbe,
+      anzahlSchichten: Number(r.anzahl_schichten),
+    }));
+  },
+  ["unternehmen-v1"],
+  { revalidate: 300, tags: ["unternehmen"] }
+);
 
-    const kunde: KundeView | null =
-      s.kunde_signatur && s.kunde_name && s.kunde_unterschrieben_am
-        ? {
-            name: s.kunde_name,
-            signatur: s.kunde_signatur,
-            unterschriebenAm: s.kunde_unterschrieben_am,
-            dokumentHash: s.kunde_dokument_hash,
-          }
-        : null;
-
-    const kToken = kundenToken(s.id);
-    const status = schichtStatusBerechnen(s.datum, zu, kunde, heute);
-
-    // Fällige Erinnerungen: Schichtende + 24 h überschritten, aber noch offen
-    const faellige: FaelligeErinnerung[] = [];
-    if (istErinnerungFaellig(s.datum, s.ende_geplant, jetzt)) {
-      for (const z of zu) {
-        if (!z.eintrag) {
-          faellige.push({
-            typ: "mitarbeiter",
-            mitarbeiterId: z.mitarbeiter.id,
-            name: `${z.mitarbeiter.vorname} ${z.mitarbeiter.nachname}`,
-            pfad: `/erfassen/${z.token}`,
-            email: z.mitarbeiter.email,
-          });
-        }
-      }
-      if (faellige.length === 0 && !kunde && zu.length > 0) {
-        faellige.push({
-          typ: "kunde",
-          name: s.ansprechpartner ?? s.auftraggeber,
-          pfad: `/unterschrift/${kToken}`,
-          email: s.auftrag_email,
-        });
-      }
-    }
-
-    return {
-      id: s.id,
-      datum: s.datum,
-      beginnGeplant: s.beginn_geplant,
-      endeGeplant: s.ende_geplant,
-      auftrag: {
-        id: s.auftrag_id,
-        titel: s.titel,
-        auftraggeber: s.auftraggeber,
-        ansprechpartner: s.ansprechpartner,
-        email: s.auftrag_email,
-        ort: s.ort,
-        farbe: s.farbe,
-      },
-      zuweisungen: zu,
-      kunde,
-      kundenToken: kToken,
-      status,
-      faelligeErinnerungen: faellige,
-    };
-  });
-}
-
-export async function getSchichtViewById(id: string): Promise<SchichtView | null> {
-  const alle = await getSchichtViews();
-  return alle.find((s) => s.id === id) ?? null;
-}
-
-/** Alle Auftraggeber / Unternehmen für die Sidebar. */
 export async function getUnternehmen(): Promise<UnternehmenView[]> {
-  const rows = await query<{
-    id: string;
-    auftraggeber: string;
-    titel: string;
-    ort: string;
-    farbe: string;
-    anzahl_schichten: number;
-  }>(
-    `SELECT a.id, a.auftraggeber, a.titel, a.ort, a.farbe,
-            COUNT(s.id)::int AS anzahl_schichten
-     FROM auftraege a
-     LEFT JOIN schichten s ON s.auftrag_id = a.id
-     GROUP BY a.id, a.auftraggeber, a.titel, a.ort, a.farbe
-     ORDER BY a.auftraggeber ASC, a.titel ASC`
-  );
-  return rows.map((r) => ({
-    id: r.id,
-    auftraggeber: r.auftraggeber,
-    titel: r.titel,
-    ort: r.ort,
-    farbe: r.farbe,
-    anzahlSchichten: Number(r.anzahl_schichten),
-  }));
+  return getUnternehmenCached();
 }
 
 export async function getAuditFuerSchicht(schichtId: string): Promise<AuditView[]> {
@@ -219,7 +288,6 @@ export async function getAuditFuerSchicht(schichtId: string): Promise<AuditView[
   }));
 }
 
-/** Wurde für dieses Ziel in den letzten 24 h schon eine Erinnerung geloggt? */
 export async function erinnerungKuerzlichGesendet(
   schichtId: string,
   mitarbeiterId: string | null,

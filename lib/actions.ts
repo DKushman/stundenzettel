@@ -2,6 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { invalidateSchichtCache } from "./invalidate";
 import { query } from "./db";
 import { logAudit, sha256 } from "./audit";
 import { verifyToken } from "./invite-token";
@@ -146,6 +147,7 @@ export async function eintragFeldSpeichern(input: {
     });
   }
 
+  invalidateSchichtCache();
   revalidatePath("/");
   revalidatePath(`/stundenzettel/${schichtId}`);
   return { ok: true as const };
@@ -201,6 +203,7 @@ export async function kundeUnterschreiben(input: {
     dokumentHash,
   });
 
+  invalidateSchichtCache();
   revalidatePath("/");
   revalidatePath(`/stundenzettel/${v.schichtId}`);
   return { ok: true as const, unterschriebenAm: jetzt };
