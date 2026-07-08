@@ -8,13 +8,11 @@ import { useAppStore, neuerDraft } from "@/lib/store";
 import { formatDatumLang } from "@/lib/time";
 import { HinweisCard } from "@/components/hinweis-card";
 import { ProgressBar } from "./progress-bar";
-import { StepSchicht } from "./step-schicht";
 import { StepZeiten } from "./step-zeiten";
-import { StepZusammenfassung } from "./step-zusammenfassung";
 import { StepSignatur, type AbgabeErgebnis } from "./step-signatur";
 import { Erfolg } from "./erfolg";
 
-export const WIZARD_STEPS = ["Schicht", "Zeiten", "Prüfen", "Signatur"] as const;
+export const WIZARD_STEPS = ["Zeiten", "Unterschrift"] as const;
 
 export type WizardSchicht = {
   id: string;
@@ -30,16 +28,14 @@ export type WizardAuftrag = {
 };
 
 /**
- * Mobiler Questionnaire (Multi-Step, DocuSign-Logik).
- * Zugriff ausschließlich über den signierten Link — der Token IST die
- * Berechtigung. Alle Eingaben liegen in einem Draft pro Token.
+ * Mobiler Questionnaire — 2 Schritte: Zeiten erfassen, unterschreiben.
+ * Zugriff ausschließlich über den signierten Link.
  */
 export function Wizard({
   token,
   schicht,
   auftrag,
   mitarbeiter,
-  team,
   bereitsAbgegeben,
 }: {
   token: string;
@@ -75,65 +71,37 @@ export function Wizard({
     );
   }
 
-  const step = draft.step;
+  const step = Math.min(draft.step, 1);
   const zurueck = () => updateDraft(token, { step: Math.max(0, step - 1) });
-  const weiter = () => updateDraft(token, { step: Math.min(3, step + 1) });
+  const weiter = () => updateDraft(token, { step: Math.min(1, step + 1) });
 
   return (
     <div className="mx-auto max-w-xl">
-      <div className="mb-6">
-        <p className="text-sm text-ink-soft">
-          Hallo {mitarbeiter.vorname} — Stundenzettel für:
-        </p>
-        <p className="truncate font-semibold leading-tight">{auftrag.titel}</p>
-        <p className="truncate text-sm text-ink-soft">
-          {auftrag.auftraggeber} · {formatDatumLang(schicht.datum)}
-        </p>
-      </div>
-
       <ProgressBar steps={[...WIZARD_STEPS]} aktiv={step} />
 
       <div className="mt-8">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={step}
-            initial={{ opacity: 0, x: 24 }}
+            initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -24 }}
-            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+            exit={{ opacity: 0, x: -16 }}
+            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
           >
             {step === 0 && (
-              <StepSchicht
-                schicht={schicht}
-                auftrag={auftrag}
-                team={team}
-                draft={draft}
-                token={token}
-                onWeiter={weiter}
-              />
-            )}
-            {step === 1 && (
               <StepZeiten
-                schicht={schicht}
-                draft={draft}
-                token={token}
-                onWeiter={weiter}
-                onZurueck={zurueck}
-              />
-            )}
-            {step === 2 && (
-              <StepZusammenfassung
                 schicht={schicht}
                 auftrag={auftrag}
                 mitarbeiter={mitarbeiter}
                 draft={draft}
                 token={token}
                 onWeiter={weiter}
-                onZurueck={zurueck}
               />
             )}
-            {step === 3 && (
+            {step === 1 && (
               <StepSignatur
+                schicht={schicht}
+                auftrag={auftrag}
                 draft={draft}
                 token={token}
                 onZurueck={zurueck}

@@ -8,14 +8,14 @@ import { create } from "zustand";
  */
 
 export type WizardDraft = {
-  step: number;          // 0..3
-  bestaetigt: boolean;   // Step 1: Anwesenheit bestätigt
+  step: number;          // 0..1
+  bestaetigt: boolean;
   checkIn: string;
   checkOut: string;
   pauseMin: number;
   notiz: string;
-  richtigkeit: boolean;  // Step 3: Angaben korrekt
-  signatur: string;      // Step 4: PNG-Data-URL
+  richtigkeit: boolean;
+  signatur: string;
 };
 
 export const neuerDraft = (checkIn = "07:00", checkOut = "16:00"): WizardDraft => ({
