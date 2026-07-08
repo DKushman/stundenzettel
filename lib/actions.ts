@@ -2,7 +2,7 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { invalidateSchichtCache } from "./invalidate";
+import { invalidateSchichtCache, invalidateUnternehmenCache } from "./invalidate";
 import { query } from "./db";
 import { logAudit, sha256 } from "./audit";
 import { verifyToken } from "./invite-token";
@@ -207,4 +207,56 @@ export async function kundeUnterschreiben(input: {
   revalidatePath("/");
   revalidatePath(`/stundenzettel/${v.schichtId}`);
   return { ok: true as const, unterschriebenAm: jetzt };
+}
+
+const UNTERNEHMEN_FARBEN = [
+  "#3B82F6",
+  "#8B5CF6",
+  "#F59E0B",
+  "#EC4899",
+  "#10B981",
+  "#6366F1",
+  "#E28412",
+  "#1CA97A",
+];
+
+/** Neues Unternehmen / Auftrag anlegen (Sidebar). */
+export async function unternehmenAnlegen(input: {
+  auftraggeber: string;
+  titel: string;
+  ort: string;
+  ansprechpartner?: string;
+  email?: string;
+}) {
+  const auftraggeber = input.auftraggeber.trim();
+  const titel = input.titel.trim();
+  const ort = input.ort.trim();
+  const ansprechpartner = input.ansprechpartner?.trim() || null;
+  const email = input.email?.trim() || null;
+
+  if (auftraggeber.length < 2) {
+    return { ok: false as const, error: "Bitte den Unternehmensnamen angeben." };
+  }
+  if (titel.length < 2) {
+    return { ok: false as const, error: "Bitte einen Projekttitel angeben." };
+  }
+  if (ort.length < 2) {
+    return { ok: false as const, error: "Bitte den Einsatzort angeben." };
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false as const, error: "Bitte eine gültige E-Mail angeben." };
+  }
+
+  const id = randomUUID();
+  const farbe = UNTERNEHMEN_FARBEN[Math.floor(Math.random() * UNTERNEHMEN_FARBEN.length)];
+
+  await query(
+    `INSERT INTO auftraege (id, titel, auftraggeber, ansprechpartner, email, ort, farbe)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, titel, auftraggeber, ansprechpartner, email, ort, farbe]
+  );
+
+  invalidateUnternehmenCache();
+  revalidatePath("/");
+  return { ok: true as const, id };
 }

@@ -3,9 +3,24 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, LayoutGrid, Link2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppData } from "@/lib/app-data-store";
+import { NeuesUnternehmenButton } from "@/components/neues-unternehmen-dialog";
+
+const itemVariants = {
+  hidden: { opacity: 0, x: -8 },
+  show: { opacity: 1, x: 0 },
+};
+
+const listVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.045, delayChildren: 0.06 },
+  },
+};
 
 export function SidebarNav() {
   const pathname = usePathname();
@@ -62,7 +77,7 @@ export function SidebarNav() {
           <LayoutGrid className="h-[18px] w-[18px] shrink-0" />
           <span className="flex-1">Dashboard</span>
           <ChevronDown
-            className={cn("h-4 w-4 text-ink-faint transition-transform", offen && "rotate-180")}
+            className={cn("h-4 w-4 text-ink-faint transition-transform duration-200", offen && "rotate-180")}
           />
         </button>
       ) : (
@@ -73,72 +88,88 @@ export function SidebarNav() {
         </Link>
       )}
 
-      {offen && (
-        <div className="mt-1 min-h-0 flex-1 overflow-hidden">
-          <div className="ml-3 flex h-full min-h-0 flex-col border-l border-line pl-3">
-            <div className="relative mb-2 shrink-0">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
-              <input
-                value={suche}
-                onChange={(e) => setSuche(e.target.value)}
-                placeholder="Unternehmen suchen…"
-                className="h-8 w-full rounded-lg border border-line bg-card pl-8 pr-2 text-[clamp(0.75rem,2vw,0.8rem)] placeholder:text-ink-faint focus:border-ink focus:outline-none"
-              />
-            </div>
+      <AnimatePresence initial={false}>
+        {offen && (
+          <motion.div
+            key="unternehmen-panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
+            className="mt-1 min-h-0 flex-1 overflow-hidden"
+          >
+            <div className="ml-3 flex h-full min-h-0 flex-col border-l border-line pl-3">
+              <div className="relative mb-2 shrink-0">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
+                <input
+                  value={suche}
+                  onChange={(e) => setSuche(e.target.value)}
+                  placeholder="Unternehmen suchen…"
+                  className="h-8 w-full rounded-lg border border-line bg-card pl-8 pr-2 text-[clamp(0.75rem,2vw,0.8rem)] placeholder:text-ink-faint focus:border-ink focus:outline-none"
+                />
+              </div>
 
-            <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
-              <li>
-                <button
-                  type="button"
-                  onClick={() => waehleAuftrag(null)}
-                  className={cn(
-                    "block w-full rounded-lg px-2.5 py-2 text-left transition-colors",
-                    aufDashboard && !auftragId
-                      ? "bg-surface font-medium text-ink"
-                      : "text-ink-soft hover:bg-surface hover:text-ink"
-                  )}
-                >
-                  Alle Unternehmen
-                </button>
-              </li>
-              {liste.map((u) => {
-                const aktiv = aufDashboard && auftragId === u.id;
-                return (
-                  <li key={u.id}>
-                    <button
-                      type="button"
-                      onClick={() => waehleAuftrag(u.id)}
-                      className={cn(
-                        "flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
-                        aktiv
-                          ? "bg-surface font-medium text-ink"
-                          : "text-ink-soft hover:bg-surface hover:text-ink"
-                      )}
-                    >
-                      <span
-                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: u.farbe }}
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate leading-tight">{u.auftraggeber}</span>
-                        <span className="mt-0.5 block truncate text-[clamp(0.7rem,2vw,0.75rem)] text-ink-faint">
-                          {u.titel} · {u.anzahlSchichten} Schicht
-                          {u.anzahlSchichten === 1 ? "" : "en"}
+              <motion.ul
+                variants={listVariants}
+                initial="hidden"
+                animate="show"
+                className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1"
+              >
+                <motion.li variants={itemVariants}>
+                  <button
+                    type="button"
+                    onClick={() => waehleAuftrag(null)}
+                    className={cn(
+                      "block w-full rounded-lg px-2.5 py-2 text-left transition-colors",
+                      aufDashboard && !auftragId
+                        ? "bg-surface font-medium text-ink"
+                        : "text-ink-soft hover:bg-surface hover:text-ink"
+                    )}
+                  >
+                    Alle Unternehmen
+                  </button>
+                </motion.li>
+                {liste.map((u) => {
+                  const aktiv = aufDashboard && auftragId === u.id;
+                  return (
+                    <motion.li key={u.id} variants={itemVariants}>
+                      <button
+                        type="button"
+                        onClick={() => waehleAuftrag(u.id)}
+                        className={cn(
+                          "flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
+                          aktiv
+                            ? "bg-surface font-medium text-ink"
+                            : "text-ink-soft hover:bg-surface hover:text-ink"
+                        )}
+                      >
+                        <span
+                          className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: u.farbe }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate leading-tight">{u.auftraggeber}</span>
+                          <span className="mt-0.5 block truncate text-[clamp(0.7rem,2vw,0.75rem)] text-ink-faint">
+                            {u.titel} · {u.anzahlSchichten} Schicht
+                            {u.anzahlSchichten === 1 ? "" : "en"}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-              {unternehmen.length > 0 && liste.length === 0 && (
-                <li className="px-2.5 py-3 text-[clamp(0.75rem,2vw,0.8rem)] text-ink-faint">
-                  Kein Unternehmen gefunden.
-                </li>
-              )}
-            </ul>
-          </div>
-        </div>
-      )}
+                      </button>
+                    </motion.li>
+                  );
+                })}
+                {unternehmen.length > 0 && liste.length === 0 && (
+                  <motion.li variants={itemVariants} className="px-2.5 py-3 text-[clamp(0.75rem,2vw,0.8rem)] text-ink-faint">
+                    Kein Unternehmen gefunden.
+                  </motion.li>
+                )}
+              </motion.ul>
+
+              <NeuesUnternehmenButton />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   );
 }

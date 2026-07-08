@@ -4,3 +4,12 @@ import { revalidateTag } from "next/cache";
 export function invalidateSchichtCache() {
   revalidateTag("schichten");
 }
+
+export function invalidateUnternehmenCache() {
+  revalidateTag("unternehmen");
+}
+
+export function invalidateDashboardCache() {
+  revalidateTag("schichten");
+  revalidateTag("unternehmen");
+}

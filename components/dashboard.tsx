@@ -2,13 +2,14 @@
 
 import { memo, useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { BellRing, CalendarDays, ChevronRight, Clock, LayoutList, MapPin, Search } from "lucide-react";
+import { motion } from "framer-motion";
+import { CalendarDays, ChevronRight, Clock, LayoutList, MapPin, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/status-badge";
-import { CopyButton } from "@/components/copy-button";
 import { AvatarStack } from "@/components/avatar";
 import { AbgabeProgress } from "@/components/abgabe-progress";
 import { DashboardKalender } from "@/components/dashboard-kalender";
+import { ErinnerungenDropdown } from "@/components/erinnerungen-dropdown";
 import { useAppData } from "@/lib/app-data-store";
 import { abgabe, statusAkzent, type SchichtStatus, type SchichtView } from "@/lib/data";
 import { formatDatumKurz, isoHeute } from "@/lib/time";
@@ -48,13 +49,26 @@ function suchText(s: SchichtView) {
   return `${s.auftrag.titel} ${s.auftrag.auftraggeber} ${s.auftrag.ort} ${s.datum} ${namen}`.toLowerCase();
 }
 
+const listVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05, delayChildren: 0.02 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.22 } },
+};
+
 const SchichtZeile = memo(function SchichtZeile({ s }: { s: SchichtView }) {
   const { abgegeben, gesamt } = abgabe(s.zuweisungen);
   const abgegebenIds = s.zuweisungen.filter((z) => z.eintrag).map((z) => z.mitarbeiter.id);
   const akzent = statusAkzent[s.status];
 
   return (
-    <li>
+    <motion.li variants={itemVariants} layout="position">
       <Link
         href={`/stundenzettel/${s.id}`}
         prefetch
@@ -88,7 +102,7 @@ const SchichtZeile = memo(function SchichtZeile({ s }: { s: SchichtView }) {
           </div>
         </div>
       </Link>
-    </li>
+    </motion.li>
   );
 });
 
@@ -217,36 +231,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      {erinnerungen.length > 0 && (
-        <div className="mt-5 rounded-2xl border border-status-progress/30 bg-status-progressBg/60 p-3 sm:mt-6 sm:p-4">
-          <p className="flex flex-wrap items-center gap-2 text-[clamp(0.8rem,2.5vw,0.9rem)] font-semibold text-status-progress">
-            <BellRing className="h-4 w-4 shrink-0" />
-            {erinnerungen.length} Erinnerung{erinnerungen.length === 1 ? "" : "en"} fällig
-            <span className="font-normal text-ink-soft">— seit über 24 h ausstehend</span>
-          </p>
-          <ul className="mt-3 space-y-2">
-            {erinnerungen.map((e, i) => (
-              <li
-                key={i}
-                className="flex flex-col gap-2 rounded-xl bg-card px-3 py-2.5 shadow-card sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[clamp(0.85rem,2.6vw,0.95rem)] font-medium">
-                    {e.name}
-                    <span className="ml-2 rounded bg-line/70 px-1.5 py-0.5 text-[clamp(0.65rem,2vw,0.75rem)] font-medium text-ink-soft">
-                      {e.typ === "kunde" ? "Kunden-Unterschrift" : "Mitarbeiter-Erfassung"}
-                    </span>
-                  </p>
-                  <p className="truncate text-[clamp(0.75rem,2.3vw,0.85rem)] text-ink-soft">
-                    {e.schicht.auftrag.titel} · {formatDatumKurz(e.schicht.datum)}
-                  </p>
-                </div>
-                <CopyButton pfad={e.pfad} label="Erinnerungs-Link kopieren" />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <ErinnerungenDropdown erinnerungen={erinnerungen} />
 
       <div className="mt-6 flex flex-col gap-3 sm:mt-8">
         <div className="w-fit max-w-full overflow-x-auto rounded-2xl bg-line/50 p-1">
@@ -293,20 +278,29 @@ export function Dashboard() {
           <DashboardKalender schichten={liste} />
         </div>
       ) : (
-        <ul className="mt-5 space-y-3 sm:mt-6">
+        <motion.ul
+          key={`${filter}-${auftragFilter ?? "alle"}-${deferredSuche}`}
+          variants={listVariants}
+          initial="hidden"
+          animate="show"
+          className="mt-5 space-y-3 sm:mt-6"
+        >
           {liste.map((s) => (
             <SchichtZeile key={s.id} s={s} />
           ))}
 
           {liste.length === 0 && (
-            <li className="rounded-2xl border border-line bg-card px-4 py-12 text-center shadow-card sm:py-14">
+            <motion.li
+              variants={itemVariants}
+              className="rounded-2xl border border-line bg-card px-4 py-12 text-center shadow-card sm:py-14"
+            >
               <p className="text-[clamp(0.9rem,2.8vw,1rem)] font-medium">Keine Stundenzettel gefunden</p>
               <p className="mt-1 text-[clamp(0.8rem,2.4vw,0.875rem)] text-ink-soft">
                 Filter zurücksetzen oder Suche anpassen.
               </p>
-            </li>
+            </motion.li>
           )}
-        </ul>
+        </motion.ul>
       )}
     </div>
   );
