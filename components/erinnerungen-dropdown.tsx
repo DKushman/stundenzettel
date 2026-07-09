@@ -36,17 +36,17 @@ export function ErinnerungenDropdown({ erinnerungen }: { erinnerungen: Erinnerun
   if (erinnerungen.length === 0) return null;
 
   return (
-    <div className="mt-5 sm:mt-6">
+    <div
+      className={cn(
+        "mt-5 overflow-hidden rounded-2xl border border-status-progress/30 bg-status-progressBg/60 sm:mt-6",
+        offen && "border-status-progress/40 bg-status-progressBg/80"
+      )}
+    >
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
         aria-expanded={offen}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors sm:px-5",
-          offen
-            ? "border-status-progress/40 bg-status-progressBg/80"
-            : "border-status-progress/30 bg-status-progressBg/60 hover:bg-status-progressBg/70"
-        )}
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-status-progress/5 sm:px-5"
       >
         <BellRing className="h-4 w-4 shrink-0 text-status-progress" />
         <span className="min-w-0 flex-1">
@@ -76,18 +76,18 @@ export function ErinnerungenDropdown({ erinnerungen }: { erinnerungen: Erinnerun
               variants={listVariants}
               initial="hidden"
               animate="show"
-              className="mt-2 space-y-2 rounded-2xl border border-line bg-card p-2 shadow-card sm:p-3"
+              className="space-y-2 border-t border-status-progress/20 px-3 pb-3 pt-2 sm:px-4 sm:pb-4"
             >
               {erinnerungen.map((e, i) => (
                 <motion.li
                   key={`${e.pfad}-${i}`}
                   variants={itemVariants}
-                  className="flex flex-col gap-2 rounded-xl bg-surface/60 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 rounded-xl border border-status-progress/15 bg-card/70 px-3 py-2.5 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-[clamp(0.85rem,2.6vw,0.95rem)] font-medium">
                       {e.name}
-                      <span className="ml-2 rounded bg-line/70 px-1.5 py-0.5 text-[clamp(0.65rem,2vw,0.75rem)] font-medium text-ink-soft">
+                      <span className="ml-2 rounded bg-status-progress/15 px-1.5 py-0.5 text-[clamp(0.65rem,2vw,0.75rem)] font-medium text-status-progress">
                         {e.typ === "kunde" ? "Kunden-Unterschrift" : "Mitarbeiter-Erfassung"}
                       </span>
                     </p>
